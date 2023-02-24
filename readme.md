@@ -9,7 +9,7 @@ npm install --save @mattduffy/koa-migrations
 ```
 This package is intended to make processing database schema migrations simple and automatic.  The middleware function should be added to the Koa application as early as possible, before any route handling or application setup is conducted.  The middleware will only run when Koa ```application.env === 'development'```, which is the default state.  The first database to be supported by this package is MongoDB.
 
-Schema updates are stored in JSON files.  Each migration file will contain at most 1 schema change.  This can be the addition/delete of a field or a sub-document, or a reformatting of an existing field.  The desired changes are located in the ```apply``` property.  The inverse of these changes are stored in the ```rollback``` proptery.  The migration files will contain properties identifying the names of the database and collection where the changes are to be applied as well as the schema version number that will be correleated to the included change.
+Schema updates are stored in JSON files.  Each migration file will contain at most 1 schema change.  This can be the addition/delete of a field or a sub-document, or a reformatting of an existing field.  The desired changes are located in the ```update``` property.  The inverse of these changes are stored in the ```rollback``` property.  The migration files will contain properties identifying the names of the database and collection where the changes are to be applied as well as the schema version number that will be correleated to the included change.
 
 The name of the migration file will include the collection name and the schema version number.  The schema version number is currently a truncated semantic version number, consisting of MINOR.PATCH values.  For example, a migration file for the 'users' collection with a version number 1.2 would be ```users-1.2.json```.
 
@@ -24,4 +24,13 @@ app.use(migrations(o, app))
 
 ```
 
-...
+### The Migration Class
+The middleware function creates an instance of the Migration class, which does almost all of the work.  An instance is created with a config object as it only parameter.  The only required param is the path to a database client export.  Other config options have useful defaults, mentioned above.  After the instance is created, calling the ```init()``` method reads the contents of the the migrationa directory.  If there are migration files present, it creates the database connection.  If there are no migration files present, the ```init()``` method returns an object literal in the format:
+```javascript
+{
+  status = 'done',
+  updates_applied = 0,
+  rollbacks_applied = 0,
+  timestamp = 1677211015
+}
+```
