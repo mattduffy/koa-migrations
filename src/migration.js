@@ -23,6 +23,10 @@ const log = Debug('migrations:class_log')
 export default class Migration extends EventEmitter {
   #migrations = []
 
+  #stamp() {
+    return Math.floor(new Date().getTime() / 1000)
+  }
+
   constructor(options = {}) {
     super()
     log('Migration constructor')
@@ -50,7 +54,7 @@ export default class Migration extends EventEmitter {
     try {
       // log(this._dbPath)
       // log(process.cwd())
-      const { client, ObjectId }= await import(this._dbPath)
+      const { client, ObjectId } = await import(this._dbPath)
       this._client = client
       this._ObjectId = ObjectId
       await this._client.connect()
@@ -61,10 +65,20 @@ export default class Migration extends EventEmitter {
     try {
       const files = await fs.readdir(this._dir)
       log(files)
+      if (files.length === 0) {
+        // there are no migration files to apply
+        return {
+          status: 'done',
+          updates_applied: 0,
+          rollbacks_applied: 0,
+          timestamp: this.#stamp(),
+        }
+      }
       //
       // loop over the files in dir and parse for migration details
       //
     } catch (e) {
+      error(e)
       error(`Failed to read contents of ${this._dir}`)
       throw new Error(`Failed to read contents of ${this._dir}`)
     }

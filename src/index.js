@@ -36,18 +36,20 @@ function migrations(options = {}, application = {}) {
   const migrationsDir = path.resolve(`${app.root}`, MIGRATION_FILES_DIR)
   log(`koa migrations directory: ${migrationsDir}`)
 
-  return async function runMigrations(ctx, next) {
+  return async function migrationRunner(ctx, next) {
     if (app.env === 'development') {
       try {
         const o = {
           dir: migrationsDir,
           db: opts.db,
         }
-        let migrationRunner = new Migration(o)
-        migrationRunner = await migrationRunner.init()
+        let runner = new Migration(o)
+        runner = await runner.init()
+        log(runner)
         await next()
       } catch (e) {
         error('Error during migrations')
+        error(e)
       }
     }
   }
