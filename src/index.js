@@ -31,21 +31,23 @@ function migrations(options = {}, application = {}) {
     error('Required path to db client not provided')
     throw new Error('Required path to db client not provided')
   }
+  if (!opts.db_name) {
+    error('Required path to db name not provided')
+    throw new Error('Required db name not provided')
+  }
+  const migrationsDir = path.resolve(`${app.root}`, MIGRATION_FILES_DIR)
+  opts.dir = migrationsDir
   log('Adding the db schema migrations middleware to the app.')
   log(`koa app root directory: ${app.root}`)
-  const migrationsDir = path.resolve(`${app.root}`, MIGRATION_FILES_DIR)
   log(`koa migrations directory: ${migrationsDir}`)
 
   return async function migrationRunner(ctx, next) {
     if (app.env === 'development') {
       try {
-        const o = {
-          dir: migrationsDir,
-          db: opts.db,
-        }
-        let runner = new Migration(o)
+        let runner = new Migration(opts)
         runner = await runner.init()
-        log(runner)
+        log(runner.migrationFiles)
+        log(runner.result)
         await next()
       } catch (e) {
         error('Error during migrations')

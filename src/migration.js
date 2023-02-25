@@ -27,11 +27,25 @@ export default class Migration extends EventEmitter {
     return Math.floor(new Date().getTime() / 1000)
   }
 
+  #schemasInDb
+
+  #migrationFiles = []
+
+  #result = {
+    status: null,
+    migrations_found: null,
+    updates_applied: null,
+    rollbacks_applied: null,
+    timestamp: null,
+  }
+
   constructor(options = {}) {
     super()
     log('Migration constructor')
     this._dir = options?.dir || null
     this._dbPath = options?.db || null
+    this._dbName = options?.db_name || 'test'
+    this._dbCollection = options?.db_collection || 'migrations'
     this._fileExt = options?.fileExt || 'json'
     this._client = null
     this.ObjectId = null
@@ -58,30 +72,59 @@ export default class Migration extends EventEmitter {
       this._client = client
       this._ObjectId = ObjectId
       await this._client.connect()
+      const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
+      this.#schemasInDb = await trackedSchemas.find().toArray()
+      log(this.#schemasInDb)
     } catch (e) {
       error('Failed to import db connection.')
       throw new Error('Failed to import db connection.')
     }
     try {
-      const files = await fs.readdir(this._dir)
-      log(files)
-      if (files.length === 0) {
+      this.#migrationFiles = await fs.readdir(this._dir)
+      log(this.#migrationFiles)
+      if (this.#migrationFiles.length === 0) {
         // there are no migration files to apply
-        return {
-          status: 'done',
-          updates_applied: 0,
-          rollbacks_applied: 0,
-          timestamp: this.#stamp(),
-        }
+        this.#result.status = 'done'
+        this.#result.migrations_found = 0
+        this.#result.updates_applied = 0
+        this.#result.rollbacks_applied = 0
+        this.#result.timestamp = this.#stamp()
+        // return this.#result
+      } else {
+        // loop over the files in dir and parse for migration details
       }
-      //
-      // loop over the files in dir and parse for migration details
-      //
     } catch (e) {
       error(e)
       error(`Failed to read contents of ${this._dir}`)
       throw new Error(`Failed to read contents of ${this._dir}`)
     }
+    try {
+      if (this.#schemasInDb.length === 0) {
+        log('No schemas currently tracked in the migrations collection.')
+      }
+    } catch (e) {
+
+    }
     return this
+  }
+
+  /**
+   * Return the collection of migration files from migrations directory, if any.
+   * @summary Return the collection of migration files from the migrations directory, if any.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return {array} Array of directory entries from reading the migrations directory.
+   */
+  get migrationFiles() {
+    return this.#migrationFiles
+  }
+
+  /**
+   * Return the cummulative results of running the migrations.
+   * @summary Return the cummulative results of running the migrations.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return {object} The object literal storing the process results.
+   */
+  get result() {
+    return this.#result
   }
 }
