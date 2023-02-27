@@ -11,7 +11,7 @@ import Debug from 'debug'
 import Migration from './migration.js'
 
 function migrations(options = {}, application = {}) {
-  const MIGRATION_FILES_DIR = options?.dir || process.env.MIGRATION_FILES_DIR || 'migrations'
+  const MIGRATION_FILES_DIR = options?.dir ?? process.env.MIGRATION_FILES_DIR ?? 'migrations'
   const error = Debug('migrations:error')
   const log = Debug('migrations:log')
   let app
@@ -46,8 +46,9 @@ function migrations(options = {}, application = {}) {
       try {
         let runner = new Migration(opts)
         runner = await runner.init()
-        log(runner.migrationFiles)
-        log(runner.result)
+        // log(runner.migrationDirs)
+        // log(runner.migrationFiles)
+        runner.update()
         await next()
       } catch (e) {
         error('Error during migrations')

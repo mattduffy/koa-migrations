@@ -5,7 +5,7 @@
  */
 
 import path from 'node:path'
-import fs from 'node:fs/promises'
+import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import EventEmitter from 'node:events'
 import Debug from 'debug'
@@ -23,13 +23,16 @@ const log = Debug('migrations:class_log')
 export default class Migration extends EventEmitter {
   #migrations = []
 
+  /* eslint-disable class-methods-use-this */
   #stamp() {
     return Math.floor(new Date().getTime() / 1000)
   }
 
   #schemasInDb
 
-  #migrationFiles = []
+  #migrationDirs = []
+
+  #todo = []
 
   #result = {
     status: null,
@@ -42,11 +45,11 @@ export default class Migration extends EventEmitter {
   constructor(options = {}) {
     super()
     log('Migration constructor')
-    this._dir = options?.dir || null
-    this._dbPath = options?.db || null
-    this._dbName = options?.db_name || 'test'
-    this._dbCollection = options?.db_collection || 'migrations'
-    this._fileExt = options?.fileExt || 'json'
+    this._dir = options?.dir ?? null
+    this._dbPath = options?.db ?? null
+    this._dbName = options?.db_name ?? 'test'
+    this._dbCollection = options?.db_collection ?? 'migrations'
+    this._fileExt = options?.fileExt ?? 'json'
     this._client = null
     this.ObjectId = null
     this._db = null
@@ -74,22 +77,25 @@ export default class Migration extends EventEmitter {
       await this._client.connect()
       const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
       this.#schemasInDb = await trackedSchemas.find().toArray()
-      log(this.#schemasInDb)
     } catch (e) {
       error('Failed to import db connection.')
       throw new Error('Failed to import db connection.')
     }
     try {
-      this.#migrationFiles = await fs.readdir(this._dir)
-      log(this.#migrationFiles)
-      if (this.#migrationFiles.length === 0) {
+      this.#migrationDirs = fs.readdirSync(this._dir, { withFileTypes: true })
+        .filter((dirent) => dirent.isDirectory())
+        .map((name) => {
+          const p = path.resolve(this._dir, name.name)
+          this.#todo.push({ name: name.name, files: fs.readdirSync(p, { withFileTypes: true }).map((f) => path.resolve(p, f.name)) })
+          return p
+        })
+      if (this.#migrationDirs.length === 0) {
         // there are no migration files to apply
         this.#result.status = 'done'
         this.#result.migrations_found = 0
         this.#result.updates_applied = 0
         this.#result.rollbacks_applied = 0
         this.#result.timestamp = this.#stamp()
-        // return this.#result
       } else {
         // loop over the files in dir and parse for migration details
       }
@@ -98,24 +104,54 @@ export default class Migration extends EventEmitter {
       error(`Failed to read contents of ${this._dir}`)
       throw new Error(`Failed to read contents of ${this._dir}`)
     }
-    try {
-      if (this.#schemasInDb.length === 0) {
-        log('No schemas currently tracked in the migrations collection.')
-      }
-    } catch (e) {
-
+    if (this.#schemasInDb.length < 1 || this.#migrationDirs.length < 1) {
+      log('No schemas currently tracked in the migrations collection.')
+      log(`No migrations currently located in ${this._dir}`)
+    } else {
+      log('Ready to run migrations.')
+      // log(this.#schemasInDb)
+      // log(this.migrationDirs)
+      // log(this.migrationFiles)
     }
     return this
   }
 
   /**
-   * Return the collection of migration files from migrations directory, if any.
-   * @summary Return the collection of migration files from the migrations directory, if any.
+   *
+   */
+  update() {
+    // log(this.migrationFiles)
+    const notEmpty = this.#todo.filter((migrate) => migrate.files.length > 0)
+      .map((x) => {
+        log(x.files)
+        return x.files
+      })
+      .map((y) => {
+        y.map((s) => {
+          log(JSON.parse(fs.readFileSync(s).toString()))
+        })
+      })
+    log(notEmpty)
+  }
+
+  /**
+   * Return the collection of migration files, if any.
+   * @summary Return the collection of migration files, if any.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return {array} Array of directory entries from reading each migration directory.
+   */
+  get migrationFiles() {
+    return this.#todo
+  }
+
+  /**
+   * Return the collection of migration directory, if any.
+   * @summary Return the collection of migration directory, if any.
    * @author Matthew Duffy <mattduffy@gmail.com>
    * @return {array} Array of directory entries from reading the migrations directory.
    */
-  get migrationFiles() {
-    return this.#migrationFiles
+  get migrationDirs() {
+    return this.#migrationDirs
   }
 
   /**
