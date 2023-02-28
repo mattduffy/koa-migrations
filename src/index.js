@@ -48,13 +48,14 @@ function migrations(options = {}, application = {}) {
         runner = await runner.init()
         // log(runner.migrationDirs)
         // log(runner.migrationFiles)
-        runner.update()
-        await next()
+        const result = runner.update()
+        log(result)
       } catch (e) {
         error('Error during migrations')
         error(e)
       }
     }
+    await next()
   }
 }
 

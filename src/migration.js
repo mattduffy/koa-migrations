@@ -36,9 +36,11 @@ export default class Migration extends EventEmitter {
 
   #result = {
     status: null,
-    migrations_found: null,
-    updates_applied: null,
-    rollbacks_applied: null,
+    migrations_found: 0,
+    updates_applied: 0,
+    updates_skipped: 0,
+    rollbacks_applied: 0,
+    rollbacks_skipped: 0,
     timestamp: null,
   }
 
@@ -92,9 +94,11 @@ export default class Migration extends EventEmitter {
       if (this.#migrationDirs.length === 0) {
         // there are no migration files to apply
         this.#result.status = 'done'
-        this.#result.migrations_found = 0
-        this.#result.updates_applied = 0
-        this.#result.rollbacks_applied = 0
+        // this.#result.migrations_found = 0
+        // this.#result.updates_applied = 0
+        // this.#result.updates_skipped = 0
+        // this.#result.rollbacks_applied = 0
+        // this.#result.rollbacks_skipped = 0
         this.#result.timestamp = this.#stamp()
       } else {
         // loop over the files in dir and parse for migration details
@@ -117,21 +121,87 @@ export default class Migration extends EventEmitter {
   }
 
   /**
-   *
+   * Apply the updates from each migration file.
+   * @summary Apply the updates from each migration file.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return ...
    */
   update() {
     // log(this.migrationFiles)
-    const notEmpty = this.#todo.filter((migrate) => migrate.files.length > 0)
-      .map((x) => {
-        log(x.files)
-        return x.files
-      })
-      .map((y) => {
-        y.map((s) => {
-          log(JSON.parse(fs.readFileSync(s).toString()))
+    try {
+      const notEmpty = this.#todo.filter((migrate) => migrate.files.length > 0)
+        .map((x) => {
+          log(x.files)
+          return x.files
         })
-      })
-    log(notEmpty)
+        .map((y) => {
+          y.map(async (s) => {
+            const parsedFile = JSON.parse(fs.readFileSync(s).toString())
+            log('parsed JSON: %O', parsedFile)
+            const { collection, version } = parsedFile
+            const { match, addField } = parsedFile.update
+            const find = this._client.db().collection(collection)
+            const cursor = await find.find(match)
+            const count = await find.countDocuments(match)
+            if (count !== 0) {
+              log(`Running migration: ${collection}, ver ${version}`)
+              log('Match: %O', match)
+              log('Adding: %O', addField)
+              log(`Matched ${count} documents to update.`)
+              log(' ')
+              // await cursor.forEach(log)
+              this.#incUpdatesApplied()
+            } else {
+              log('huh?  what?')
+              this.#incUpdatesSkipped()
+            }
+          })
+        })
+      // log(notEmpty)
+    } catch (e) {
+      error('Error during update: %O', e)
+      throw new Error('Error during update: ', e)
+    }
+  }
+
+  /**
+   * Increment the updates applied field in the results object.
+   * @summary Increment the updates applied field in the results object.
+   * @private
+   * @return undefined
+   */
+  #incUpdatesApplied() {
+    this.#result.updates_applied += 1
+  }
+
+  /**
+   * Increment the updates skipped field in the results object.
+   * @summary Increment the updates skipped field in the results object.
+   * @private
+   * @return undefined
+   */
+  #incUpdatesSkipped() {
+    this.#result.updates_skipped += 1
+  }
+
+  /**
+   * Increment the rollbacks applied field in the results object.
+   * @summary Increment the rollbacks applied field in the results object.
+   * @private
+   * @return undefined
+   */
+  #incRollbacksApplied() {
+    this.#result.rollbacks_applied += 1
+  }
+
+  /**
+   * Increment the rollbacks skipped field in the results object.
+   * @summary Increment the rollbacks skipped field in the results object.
+   * @private
+   * @return undefined
+   */
+  #incRollbacksSkipped() {
+    this.#result.rollbacks_skipped += 1
   }
 
   /**
