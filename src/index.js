@@ -42,20 +42,30 @@ function migrations(options = {}, application = {}) {
   log(`koa migrations directory: ${migrationsDir}`)
 
   return async function migrationRunner(ctx, next) {
-    if (app.env === 'development') {
+    const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?$/.exec(ctx.request.path)
+    if (app.env === 'development' && match) {
+      if (match[1]) {
+        [, opts.only] = match
+      }
+      let result
       try {
         let runner = new Migration(opts)
         runner = await runner.init()
         // log(runner.migrationDirs)
         // log(runner.migrationFiles)
-        const result = runner.update()
-        log(result)
+        result = await runner.update()
+        // log('migration results: %O', result)
+        log('migration results: %O', runner.results)
       } catch (e) {
         error('Error during migrations')
         error(e)
       }
+      ctx.status = 200
+      ctx.type = 'applicatin/json; charset=utf-8'
+      ctx.body = result
+    } else {
+      await next()
     }
-    await next()
   }
 }
 

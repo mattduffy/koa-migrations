@@ -23,11 +23,6 @@ const log = Debug('migrations:class_log')
 export default class Migration extends EventEmitter {
   #migrations = []
 
-  /* eslint-disable class-methods-use-this */
-  #stamp() {
-    return Math.floor(new Date().getTime() / 1000)
-  }
-
   #schemasInDb
 
   #migrationDirs = []
@@ -46,7 +41,7 @@ export default class Migration extends EventEmitter {
 
   constructor(options = {}) {
     super()
-    log('Migration constructor')
+    log('Migration constructor >> start')
     this._dir = options?.dir ?? null
     this._dbPath = options?.db ?? null
     this._dbName = options?.db_name ?? 'test'
@@ -55,6 +50,9 @@ export default class Migration extends EventEmitter {
     this._client = null
     this.ObjectId = null
     this._db = null
+    this._only = options?.only ?? null
+    if (this._only) this.#result.only = this._only
+    log('Migration constructor >> end')
   }
 
   /**
@@ -66,13 +64,12 @@ export default class Migration extends EventEmitter {
    * @return {object} Return this instance with db connected
    */
   async init() {
+    log('Migration init method >> start')
     if (!this._dbPath) {
       log('Missing db path')
       throw new Error('Missing db path')
     }
     try {
-      // log(this._dbPath)
-      // log(process.cwd())
       const { client, ObjectId } = await import(this._dbPath)
       this._client = client
       this._ObjectId = ObjectId
@@ -86,6 +83,20 @@ export default class Migration extends EventEmitter {
     try {
       this.#migrationDirs = fs.readdirSync(this._dir, { withFileTypes: true })
         .filter((dirent) => dirent.isDirectory())
+        .filter((onlyDir) => {
+          log(onlyDir)
+          log(`this->_only: ${this._only}`)
+          if (this._only === undefined || this._only === null) {
+            log(`${this._only}, ${onlyDir.name}`)
+            return onlyDir
+          }
+          if (this._only !== undefined && this._only === onlyDir.name) {
+            log('help')
+            return onlyDir
+          }
+          log('false')
+          return false
+        })
         .map((name) => {
           const p = path.resolve(this._dir, name.name)
           this.#todo.push({ name: name.name, files: fs.readdirSync(p, { withFileTypes: true }).map((f) => path.resolve(p, f.name)) })
@@ -94,11 +105,6 @@ export default class Migration extends EventEmitter {
       if (this.#migrationDirs.length === 0) {
         // there are no migration files to apply
         this.#result.status = 'done'
-        // this.#result.migrations_found = 0
-        // this.#result.updates_applied = 0
-        // this.#result.updates_skipped = 0
-        // this.#result.rollbacks_applied = 0
-        // this.#result.rollbacks_skipped = 0
         this.#result.timestamp = this.#stamp()
       } else {
         // loop over the files in dir and parse for migration details
@@ -117,6 +123,7 @@ export default class Migration extends EventEmitter {
       // log(this.migrationDirs)
       // log(this.migrationFiles)
     }
+    log('Migration init method >> end')
     return this
   }
 
@@ -126,42 +133,65 @@ export default class Migration extends EventEmitter {
    * @author Matthew Duffy <mattduffy@gmail.com>
    * @return ...
    */
-  update() {
+  async update() {
+    log('Migration update method >> start')
     // log(this.migrationFiles)
     try {
-      const notEmpty = this.#todo.filter((migrate) => migrate.files.length > 0)
-        .map((x) => {
-          log(x.files)
-          return x.files
+      const notEmpty = this.#todo.filter((migrate) => {
+        if (migrate.files.length > 0) {
+          return true
+        }
+        this.#incUpdatesSkipped()
+        return false
+      })
+      notEmpty.map((x) => {
+        log(x.files)
+        return x.files
+      })
+      error(notEmpty)
+      const parsedFilesArray = await notEmpty.map(async (schemaDir) => {
+        await schemaDir.files.map(async (schema) => {
+          const parsedFile = JSON.parse(fs.readFileSync(schema).toString())
+          log('parsed JSON: %O', parsedFile)
+          const { collection, version } = parsedFile
+          const { match, addField } = parsedFile.update
+          const find = this._client.db().collection(collection)
+          const cursor = await find.find(match)
+          // const count = await find.countDocuments(match)
+          error(`count: ${collection} ${cursor.matchedCount}`)
+          if (cursor.matchedCount !== 0) {
+            log(`Running migration: ${collection}, ver ${version}`)
+            log('Match: %O', match)
+            log('Adding: %O', addField)
+            // log(`Matched ${count} documents to update.`)
+            log(' ')
+            // await cursor.forEach(log)
+            this.#incUpdatesApplied()
+            this.#result.timestamp = this.#stamp()
+          } else {
+            log('huh?  what?')
+            this.#incUpdatesSkipped()
+          }
         })
-        .map((y) => {
-          y.map(async (s) => {
-            const parsedFile = JSON.parse(fs.readFileSync(s).toString())
-            log('parsed JSON: %O', parsedFile)
-            const { collection, version } = parsedFile
-            const { match, addField } = parsedFile.update
-            const find = this._client.db().collection(collection)
-            const cursor = await find.find(match)
-            const count = await find.countDocuments(match)
-            if (count !== 0) {
-              log(`Running migration: ${collection}, ver ${version}`)
-              log('Match: %O', match)
-              log('Adding: %O', addField)
-              log(`Matched ${count} documents to update.`)
-              log(' ')
-              // await cursor.forEach(log)
-              this.#incUpdatesApplied()
-            } else {
-              log('huh?  what?')
-              this.#incUpdatesSkipped()
-            }
-          })
-        })
-      // log(notEmpty)
+        return this.results
+      })
+      error(parsedFilesArray)
+      log('Migration update method >> end')
+      return notEmpty
     } catch (e) {
       error('Error during update: %O', e)
       throw new Error('Error during update: ', e)
     }
+  }
+
+  /**
+   * Return the result of running migrations.
+   * @summary Return the result of running migrations.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return ...
+   */
+  get results() {
+    return this.#result
   }
 
   /**
@@ -171,6 +201,7 @@ export default class Migration extends EventEmitter {
    * @return undefined
    */
   #incUpdatesApplied() {
+    log('increment updates_applied')
     this.#result.updates_applied += 1
   }
 
@@ -181,6 +212,7 @@ export default class Migration extends EventEmitter {
    * @return undefined
    */
   #incUpdatesSkipped() {
+    log('increment updates_skipped')
     this.#result.updates_skipped += 1
   }
 
@@ -191,6 +223,7 @@ export default class Migration extends EventEmitter {
    * @return undefined
    */
   #incRollbacksApplied() {
+    log('increment rollbacks_applied')
     this.#result.rollbacks_applied += 1
   }
 
@@ -201,7 +234,15 @@ export default class Migration extends EventEmitter {
    * @return undefined
    */
   #incRollbacksSkipped() {
+    log('increment rollbacks_skipped')
     this.#result.rollbacks_skipped += 1
+  }
+
+  /* eslint-disable class-methods-use-this */
+  #stamp() {
+    const ts = Math.floor(new Date().getTime() / 1000)
+    // this.#result.timestamp = ts
+    return ts
   }
 
   /**
