@@ -50,10 +50,13 @@ function migrations(options = {}, application = {}) {
       //   ctx.type = 'text/plain; charset=utf-8'
       //   ctx.body = 'Unauthorized'
       // }
-      const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?$/.exec(ctx.request.path)
+      const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?(?:\/)?(update|rollback)?$/.exec(ctx.request.path)
       if (app.env === 'development' && match) {
         if (match[1]) {
           [, opts.only] = match
+        }
+        if (match[2]) {
+          [, , opts.action] = match
         }
         let result
         try {
@@ -61,7 +64,7 @@ function migrations(options = {}, application = {}) {
           runner = await runner.init()
           // log(runner.migrationDirs)
           // log(runner.migrationFiles)
-          result = await runner.update()
+          result = await runner.run()
           // log('migration results: %O', result)
           log('migration results: %O', runner.results)
         } catch (e) {

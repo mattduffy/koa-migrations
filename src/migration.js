@@ -31,6 +31,7 @@ export default class Migration extends EventEmitter {
 
   #result = {
     status: null,
+    action: null,
     migrations_found: 0,
     updates_applied: 0,
     updates_skipped: 0,
@@ -50,8 +51,11 @@ export default class Migration extends EventEmitter {
     this._client = null
     this.ObjectId = null
     this._db = null
+    this._action = options?.action ?? 'update'
     this._only = options?.only ?? null
     if (this._only) this.#result.only = this._only
+    log(`action: ${this._action}`)
+    log(`for: ${(!!this._only) ? this._only : 'all schemas'}`)
     log('Migration constructor >> end')
   }
 
@@ -152,7 +156,7 @@ export default class Migration extends EventEmitter {
         log(x.files)
         return x.files
       })
-      error(notEmpty)
+      // error(notEmpty)
       const parsedFilesArray = await notEmpty.map(async (schemaDir) => {
         await schemaDir.files.map(async (schema) => {
           const parsedFile = JSON.parse(fs.readFileSync(schema).toString())
@@ -162,7 +166,8 @@ export default class Migration extends EventEmitter {
           const find = this._client.db().collection(collection)
           const cursor = await find.find(match)
           // const count = await find.countDocuments(match)
-          error(`count: ${collection} ${cursor.matchedCount}`)
+          // error(`count: ${collection} ${cursor.matchedCount}`)
+          error(`count: ${collection} ${await cursor.count()}`)
           if (cursor.matchedCount !== 0) {
             log(`Running migration: ${collection}, ver ${version}`)
             log('Match: %O', match)
@@ -179,13 +184,41 @@ export default class Migration extends EventEmitter {
         })
         return this.results
       })
-      error(parsedFilesArray)
+      // error(parsedFilesArray)
       log('Migration update method >> end')
       return notEmpty
+      // return this.results
     } catch (e) {
       error('Error during update: %O', e)
       throw new Error('Error during update: ', e)
     }
+  }
+
+  /**
+   * Determine whether to perform update or rollback based on action passed in options, defaults to update.
+   * @summary Determine whether to perform update or rollback based on action passed in options, defaults to update.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return ...
+   */
+  async run() {
+    if (this._action === 'update') {
+      return await this.update()
+    }
+    return await this.rollback()
+  }
+
+  /**
+   * Apply the rollback specified for a named schema.
+   * @summary Apply the rollback specified for a named schema.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @return ...
+   */
+  async rollback() {
+    if (this._action === 'rollback' && !!this._only) {
+      log(`perform rollback on schema named: ${this._only}`)
+      return true
+    }
+    return false
   }
 
   /**
