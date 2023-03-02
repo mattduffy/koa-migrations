@@ -102,6 +102,10 @@ export default class Migration extends EventEmitter {
           this.#todo.push({ name: name.name, files: fs.readdirSync(p, { withFileTypes: true }).map((f) => path.resolve(p, f.name)) })
           return p
         })
+      this.#result.migrations_found = this.#todo.reduce(
+        (accumulator, currentValue) => accumulator + currentValue.files.length,
+        0,
+      )
       if (this.#migrationDirs.length === 0) {
         // there are no migration files to apply
         this.#result.status = 'done'

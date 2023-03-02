@@ -41,29 +41,43 @@ function migrations(options = {}, application = {}) {
   log(`koa app root directory: ${app.root}`)
   log(`koa migrations directory: ${migrationsDir}`)
 
-  return async function migrationRunner(ctx, next) {
-    const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?$/.exec(ctx.request.path)
-    if (app.env === 'development' && match) {
-      if (match[1]) {
-        [, opts.only] = match
+  if (app.env === 'development') {
+    return async function migrationRunner(ctx, next) {
+      // Need to figure out a means to protect this route before the session is recreated to
+      // restore an authenticated admin-level user.
+      // if (!ctx.state.isAuthenticated || ctx.state.user?.type !== 'Admin') {
+      //   ctx.status = 401
+      //   ctx.type = 'text/plain; charset=utf-8'
+      //   ctx.body = 'Unauthorized'
+      // }
+      const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?$/.exec(ctx.request.path)
+      if (app.env === 'development' && match) {
+        if (match[1]) {
+          [, opts.only] = match
+        }
+        let result
+        try {
+          let runner = new Migration(opts)
+          runner = await runner.init()
+          // log(runner.migrationDirs)
+          // log(runner.migrationFiles)
+          result = await runner.update()
+          // log('migration results: %O', result)
+          log('migration results: %O', runner.results)
+        } catch (e) {
+          error('Error during migrations')
+          error(e)
+        }
+        ctx.status = 200
+        ctx.type = 'applicatin/json; charset=utf-8'
+        ctx.body = result
+      } else {
+        await next()
       }
-      let result
-      try {
-        let runner = new Migration(opts)
-        runner = await runner.init()
-        // log(runner.migrationDirs)
-        // log(runner.migrationFiles)
-        result = await runner.update()
-        // log('migration results: %O', result)
-        log('migration results: %O', runner.results)
-      } catch (e) {
-        error('Error during migrations')
-        error(e)
-      }
-      ctx.status = 200
-      ctx.type = 'applicatin/json; charset=utf-8'
-      ctx.body = result
-    } else {
+    }
+  /* eslint-disable no-else-return */
+  } else {
+    return async function migrationNoop(ctx, next) {
       await next()
     }
   }
