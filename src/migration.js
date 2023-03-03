@@ -23,7 +23,7 @@ const log = Debug('migrations:class_log')
 export default class Migration extends EventEmitter {
   #migrations = []
 
-  #schemasInDb
+  #schemasInDb = { length: 0 }
 
   #migrationDirs = []
 
@@ -55,6 +55,7 @@ export default class Migration extends EventEmitter {
     this._only = options?.only ?? null
     if (this._only) this.#result.only = this._only
     log(`action: ${this._action}`)
+    /* eslint-disable no-extra-boolean-cast */
     log(`for: ${(!!this._only) ? this._only : 'all schemas'}`)
     log('Migration constructor >> end')
   }
@@ -77,10 +78,12 @@ export default class Migration extends EventEmitter {
       const { client, ObjectId } = await import(this._dbPath)
       this._client = client
       this._ObjectId = ObjectId
-      await this._client.connect()
-      const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
-      this.#schemasInDb = await trackedSchemas.find().toArray()
+      // await this._client.connect()
+      // const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
+      // this.#schemasInDb = await trackedSchemas.find().toArray()
+      await this.#schemaMaxVersions()
     } catch (e) {
+      error(e)
       error('Failed to import db connection.')
       throw new Error('Failed to import db connection.')
     }
@@ -113,7 +116,7 @@ export default class Migration extends EventEmitter {
       if (this.#migrationDirs.length === 0) {
         // there are no migration files to apply
         this.#result.status = 'done'
-        this.#result.timestamp = this.#stamp()
+        this.#result.timestamp = this.#tstamp()
       } else {
         // loop over the files in dir and parse for migration details
       }
@@ -157,32 +160,48 @@ export default class Migration extends EventEmitter {
         return x.files
       })
       // error(notEmpty)
+      let find
+      let updateSchemas
+      error(this.#schemasInDb)
       const parsedFilesArray = await notEmpty.map(async (schemaDir) => {
         await schemaDir.files.map(async (schema) => {
           const parsedFile = JSON.parse(fs.readFileSync(schema).toString())
           log('parsed JSON: %O', parsedFile)
           const { collection, version } = parsedFile
-          const { match, addField } = parsedFile.update
-          const find = this._client.db().collection(collection)
-          const cursor = await find.find(match)
-          // const count = await find.countDocuments(match)
-          // error(`count: ${collection} ${cursor.matchedCount}`)
-          error(`count: ${collection} ${await cursor.count()}`)
-          if (cursor.matchedCount !== 0) {
-            log(`Running migration: ${collection}, ver ${version}`)
-            log('Match: %O', match)
-            log('Adding: %O', addField)
-            // log(`Matched ${count} documents to update.`)
-            log(' ')
-            // await cursor.forEach(log)
-            this.#incUpdatesApplied()
-            this.#result.timestamp = this.#stamp()
-          } else {
-            log('huh?  what?')
-            this.#incUpdatesSkipped()
+          const { filter, update } = parsedFile.update
+          // if (this.#schemasInDb[collection].version < version) {
+          error(this.#schemasInDb[collection], version)
+          if (this.#schemasInDb[collection] < version) {
+            find = this._client.db().collection(collection)
+            updateSchemas = await find.updateMany(filter, update)
+            log(`${collection}, matched count: ${updateSchemas.matchedCount}`)
+            log(`${collection}, modified count: ${updateSchemas.modifiedCount}`)
+            if (updateSchemas.matchedCount !== 0) {
+              log(`Running migration: ${collection}, ver ${version}`)
+              log('Filter: %O', filter)
+              log('Adding: %O', update)
+              // Update the migrations collection with these results
+              find = this._client.db().collection(this._dbCollection)
+              const doc = {
+                version,
+                migrationDate: this.#tstamp(),
+                schema: collection,
+                action: 'update',
+              }
+              const updateMigrations = await find.insertOne(doc)
+              log('%O', doc)
+              log(`Migrations collection updated: ${this._dbCollection} ${updateMigrations.acknowledged}`)
+              this.#incUpdatesApplied()
+              this.#result.timestamp = this.#tstamp()
+            } else {
+              log(`No updates made to ${collection}`)
+              this.#incUpdatesSkipped()
+              this.#result.timestamp = this.#tstamp()
+            }
           }
         })
         return this.results
+        // return updateSchemas
       })
       // error(parsedFilesArray)
       log('Migration update method >> end')
@@ -202,8 +221,10 @@ export default class Migration extends EventEmitter {
    */
   async run() {
     if (this._action === 'update') {
+      this.#result.action = 'update'
       return await this.update()
     }
+    this.#result.action = 'rollback'
     return await this.rollback()
   }
 
@@ -229,6 +250,27 @@ export default class Migration extends EventEmitter {
    */
   get results() {
     return this.#result
+  }
+
+  /**
+   *
+   */
+  async #schemaMaxVersions() {
+    await this._client.connect()
+    const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
+    /* eslint-disable quote-props */
+    const group = { '$group': { _id: '$schema', 'version': { '$max': '$version' } } }
+    /* eslint-disable quote-props */
+    const sort = { '$sort': { _id: 1 } }
+    const pipeline = [group, sort]
+    const result = await trackedSchemas.aggregate(pipeline).toArray()
+    // log(result)
+    result.map((e) => {
+      const count = this.#schemasInDb?.length ?? 0
+      this.#schemasInDb[e._id] = e.version
+      this.#schemasInDb.length = count + 1
+      return count
+    })
   }
 
   /**
@@ -276,7 +318,7 @@ export default class Migration extends EventEmitter {
   }
 
   /* eslint-disable class-methods-use-this */
-  #stamp() {
+  #tstamp() {
     const ts = Math.floor(new Date().getTime() / 1000)
     // this.#result.timestamp = ts
     return ts
