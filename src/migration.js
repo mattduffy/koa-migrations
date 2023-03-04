@@ -165,12 +165,13 @@ export default class Migration extends EventEmitter {
       error(this.#schemasInDb)
       const parsedFilesArray = await notEmpty.map(async (schemaDir) => {
         await schemaDir.files.map(async (schema) => {
+          const { base } = path.parse(schema)
           const parsedFile = JSON.parse(fs.readFileSync(schema).toString())
           log('parsed JSON: %O', parsedFile)
-          const { collection, version } = parsedFile
+          const { collection, description, version } = parsedFile
           const { filter, update } = parsedFile.update
-          // if (this.#schemasInDb[collection].version < version) {
           error(this.#schemasInDb[collection], version)
+          // Schema version in DB is less than this version from migration file.
           if (this.#schemasInDb[collection] < version) {
             find = this._client.db().collection(collection)
             updateSchemas = await find.updateMany(filter, update)
@@ -184,8 +185,10 @@ export default class Migration extends EventEmitter {
               find = this._client.db().collection(this._dbCollection)
               const doc = {
                 version,
-                migrationDate: this.#tstamp(),
                 schema: collection,
+                file: base,
+                description,
+                migrationDate: this.#tstamp(),
                 action: 'update',
               }
               const updateMigrations = await find.insertOne(doc)
@@ -198,6 +201,11 @@ export default class Migration extends EventEmitter {
               this.#incUpdatesSkipped()
               this.#result.timestamp = this.#tstamp()
             }
+          } else {
+            // Schema version in DB is greater than this version form migration file, so skip it.
+            log(`${collection} version ${this.#schemasInDb[collection]} in DB > migration file version ${version}`)
+            log(`Skipping this migration file.`)
+            this.#incUpdatesSkipped()
           }
         })
         return this.results
@@ -205,12 +213,13 @@ export default class Migration extends EventEmitter {
       })
       // error(parsedFilesArray)
       log('Migration update method >> end')
-      return notEmpty
+      // return notEmpty
       // return this.results
     } catch (e) {
       error('Error during update: %O', e)
       throw new Error('Error during update: ', e)
     }
+    return this.results
   }
 
   /**
@@ -240,16 +249,6 @@ export default class Migration extends EventEmitter {
       return true
     }
     return false
-  }
-
-  /**
-   * Return the result of running migrations.
-   * @summary Return the result of running migrations.
-   * @author Matthew Duffy <mattduffy@gmail.com>
-   * @return ...
-   */
-  get results() {
-    return this.#result
   }
 
   /**
@@ -319,9 +318,7 @@ export default class Migration extends EventEmitter {
 
   /* eslint-disable class-methods-use-this */
   #tstamp() {
-    const ts = Math.floor(new Date().getTime() / 1000)
-    // this.#result.timestamp = ts
-    return ts
+    return Math.floor(new Date().getTime() / 1000)
   }
 
   /**
@@ -345,12 +342,12 @@ export default class Migration extends EventEmitter {
   }
 
   /**
-   * Return the cummulative results of running the migrations.
-   * @summary Return the cummulative results of running the migrations.
+   * Return the result of running migrations.
+   * @summary Return the result of running migrations.
    * @author Matthew Duffy <mattduffy@gmail.com>
-   * @return {object} The object literal storing the process results.
+   * @return ...
    */
-  get result() {
+  get results() {
     return this.#result
   }
 }

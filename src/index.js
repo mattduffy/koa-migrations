@@ -66,7 +66,7 @@ function migrations(options = {}, application = {}) {
           // log(runner.migrationFiles)
           result = await runner.run()
           // log('migration results: %O', result)
-          log('migration results: %O', runner.results)
+          log(`migration results: ${runner.results}`)
         } catch (e) {
           error('Error during migrations')
           error(e)
