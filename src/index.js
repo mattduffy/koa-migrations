@@ -78,7 +78,7 @@ function migrations(options = {}, application = {}) {
         await next()
       }
     }
-  /* eslint-disable no-else-return */
+  /* eslint-disable-next-line no-else-return */
   } else {
     return async function migrationNoop(ctx, next) {
       await next()

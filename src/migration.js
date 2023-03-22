@@ -55,7 +55,7 @@ export default class Migration extends EventEmitter {
     this._only = options?.only ?? null
     if (this._only) this.#result.only = this._only
     log(`action: ${this._action}`)
-    /* eslint-disable no-extra-boolean-cast */
+    /* eslint-disable-next-line no-extra-boolean-cast */
     log(`for: ${(!!this._only) ? this._only : 'all schemas'}`)
     log('Migration constructor >> end')
   }
@@ -257,9 +257,9 @@ export default class Migration extends EventEmitter {
   async #schemaMaxVersions() {
     await this._client.connect()
     const trackedSchemas = this._client.db(this._dbName).collection(this._dbCollection)
-    /* eslint-disable quote-props */
+    /* eslint-disable-next-line quote-props */
     const group = { '$group': { _id: '$schema', 'version': { '$max': '$version' } } }
-    /* eslint-disable quote-props */
+    /* eslint-disable-next-line quote-props */
     const sort = { '$sort': { _id: 1 } }
     const pipeline = [group, sort]
     const result = await trackedSchemas.aggregate(pipeline).toArray()
@@ -320,6 +320,7 @@ export default class Migration extends EventEmitter {
   #tstamp() {
     return Math.floor(new Date().getTime() / 1000)
   }
+  /* eslint-enable class-methods-use-this */
 
   /**
    * Return the collection of migration files, if any.
