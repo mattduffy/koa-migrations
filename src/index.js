@@ -43,13 +43,6 @@ function migrations(options = {}, application = {}) {
 
   if (app.env === 'development') {
     return async function migrationRunner(ctx, next) {
-      // Need to figure out a means to protect this route before the session is recreated to
-      // restore an authenticated admin-level user.
-      // if (!ctx.state.isAuthenticated || ctx.state.user?.type !== 'Admin') {
-      //   ctx.status = 401
-      //   ctx.type = 'text/plain; charset=utf-8'
-      //   ctx.body = 'Unauthorized'
-      // }
       const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?(?:\/)?(update|rollback)?$/.exec(ctx.request.path)
       if (app.env === 'development' && match) {
         if (match[1]) {
@@ -58,14 +51,22 @@ function migrations(options = {}, application = {}) {
         if (match[2]) {
           [, , opts.action] = match
         }
+        // Need to figure out a means to protect this route before the session is recreated to
+        // restore an authenticated admin-level user.
+        // if (ctx.state.user?.type !== 'Admin') {
+        //   error(ctx.state.user)
+        //   ctx.status = 403
+        //   ctx.type = 'text/plain; charset=utf-8'
+        //   ctx.body = 'Forbidden'
+        // }
         let result
         try {
           let runner = new Migration(opts)
           runner = await runner.init()
-          // log(runner.migrationDirs)
-          // log(runner.migrationFiles)
+          log(runner.migrationDirs)
+          log(runner.migrationFiles)
           result = await runner.run()
-          // log('migration results: %O', result)
+          log('migration results: %O', result)
           log(`migration results: ${runner.results}`)
         } catch (e) {
           error('Error during migrations')
