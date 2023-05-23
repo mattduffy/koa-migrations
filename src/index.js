@@ -43,7 +43,7 @@ function migrations(options = {}, application = {}) {
 
   if (app.env === 'development') {
     return async function migrationRunner(ctx, next) {
-      const match = /\/test\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?(?:\/)?(update|rollback)?$/.exec(ctx.request.path)
+      const match = /\/util\/migrations(?:\/)?([A-Za-z0-9._-]{3,30})?(?:\/)?(update|rollback)?$/.exec(ctx.request.path)
       if (app.env === 'development' && match) {
         if (match[1]) {
           [, opts.only] = match

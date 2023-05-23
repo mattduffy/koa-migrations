@@ -6,7 +6,7 @@
 
 import path from 'node:path'
 import fs from 'node:fs'
-import { fileURLToPath } from 'node:url'
+// import { fileURLToPath } from 'node:url'
 import EventEmitter from 'node:events'
 import Debug from 'debug'
 
@@ -171,8 +171,22 @@ export default class Migration extends EventEmitter {
           const { collection, description, version } = parsedFile
           const { filter, update } = parsedFile.update
           error(this.#schemasInDb[collection], version)
-          // Schema version in DB is less than this version from migration file.
+          if (this.#schemasInDb[collection] === undefined) {
+            // Schema is not currently listed in DB, must create first schema document.
+            const newSchemaDoc = {
+              version: 0,
+              schema: collection,
+              file: base,
+              description,
+              migrationDate: this.#tstamp(),
+              action: 'create',
+            }
+            const inserted = await this._client.db().collection(this._dbCollection).insertOne(newSchemaDoc)
+            log('%0', inserted)
+            await this.#schemaMaxVersions()
+          }
           if (this.#schemasInDb[collection] < version) {
+            // Schema version in DB is less than this version from migration file.
             find = this._client.db().collection(collection)
             updateSchemas = await find.updateMany(filter, update)
             log(`${collection}, matched count: ${updateSchemas.matchedCount}`)
@@ -204,14 +218,14 @@ export default class Migration extends EventEmitter {
           } else {
             // Schema version in DB is greater than this version form migration file, so skip it.
             log(`${collection} version ${this.#schemasInDb[collection]} in DB > migration file version ${version}`)
-            log(`Skipping this migration file.`)
+            log('Skipping this migration file.')
             this.#incUpdatesSkipped()
           }
         })
         return this.results
         // return updateSchemas
       })
-      // error(parsedFilesArray)
+      log(parsedFilesArray)
       log('Migration update method >> end')
       // return notEmpty
       // return this.results
@@ -231,10 +245,10 @@ export default class Migration extends EventEmitter {
   async run() {
     if (this._action === 'update') {
       this.#result.action = 'update'
-      return await this.update()
+      return this.update()
     }
     this.#result.action = 'rollback'
-    return await this.rollback()
+    return this.rollback()
   }
 
   /**
